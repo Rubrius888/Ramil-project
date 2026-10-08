@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#3b82f6">
+  <title>ILU SE — Учёт знаний и явки</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Гамбургер для мобильных -->
+<button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileMenu()" title="Меню">☰</button>
+<div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="toggleMobileMenu()"></div>
+
+<!-- Иконка уведомлений -->
+<button id="notifBell" class="notif-bell" onclick="toggleNotifications()" title="Уведомления">
+  🔔
+  <span id="notifCount" class="notif-count" style="display:none;">0</span>
+</button>
+
+<!-- Панель уведомлений -->
+<div id="notifPanel" class="notif-panel">
+  <div class="notif-header">
+    <span>🔔 Уведомления</span>
+    <div style="display:flex;gap:6px;">
+      <button class="btn-small" onclick="markAllNotificationsRead()">Прочитать все</button>
+      <button class="btn-small" onclick="toggleNotifications()">✕</button>
+    </div>
+  </div>
+  <div class="notif-body" id="notifBody"></div>
+</div>
+
+<!-- Кнопка шпаргалки -->
+<button class="shortcuts-help-btn" onclick="toggleShortcutsHelp()" title="Горячие клавиши (?)">?</button>
+
+<!-- Модалка горячих клавиш -->
+<div id="shortcutsHelp" class="shortcuts-help">
+  <div class="shortcuts-help-content">
+    <div class="shortcuts-help-header">
+      <span>⌨️ Горячие клавиши</span>
+      <button class="btn-small" onclick="toggleShortcutsHelp()">✕</button>
+    </div>
+    <div class="shortcuts-help-body">
+      <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>K</kbd><span>Глобальный поиск</span></div>
+      <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>S</kbd><span>Сохранить</span></div>
+      <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>1..5</kbd><span>Переключить группу</span></div>
+      <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1..4</kbd><span>Переключить под-вкладку</span></div>
+      <div class="shortcut-row"><kbd>Esc</kbd><span>Закрыть модалку / меню</span></div>
+      <div class="shortcut-row"><kbd>?</kbd><span>Показать справку</span></div>
+      <div class="shortcut-row"><kbd>T</kbd><span>Переключить тему</span></div>
+      <div class="shortcut-row"><kbd>N</kbd><span>Открыть уведомления</span></div>
+      <div class="shortcut-row"><kbd>R</kbd><span>Обновить</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Глобальный поиск -->
+<div id="globalSearchModal" class="global-search-modal">
+  <div class="global-search-content">
+    <input type="text" id="globalSearchInput"
+           placeholder="Поиск: оператор, пост, участок…"
+           oninput="renderGlobalSearchResults(this.value)"
+           autocomplete="off">
+    <div id="globalSearchResults" class="global-search-results">
+      <div class="global-search-hint">Введите запрос для поиска</div>
+    </div>
+  </div>
+</div>
+
+<!-- Профиль оператора -->
+<div id="operatorProfileModal" class="operator-profile-modal">
+  <div class="operator-profile-content">
+    <div class="operator-profile-header">
+      <div id="operatorProfileTitle">👤 Оператор</div>
+      <button class="btn-small" onclick="closeOperatorProfile()">✕</button>
+    </div>
+    <div class="operator-profile-body" id="operatorProfileBody"></div>
+  </div>
+</div>
+
+<!-- Профиль поста -->
+<div id="postProfileModal" class="operator-profile-modal">
+  <div class="operator-profile-content">
+    <div class="operator-profile-header">
+      <div id="postProfileTitle">📍 Пост</div>
+      <button class="btn-small" onclick="closePostProfile()">✕</button>
+    </div>
+    <div class="operator-profile-body" id="postProfileBody"></div>
+  </div>
+</div>
+
+<!-- Модалка просмотра Excel -->
+<div id="excelPreviewModal" class="operator-profile-modal">
+  <div class="operator-profile-content" style="width:1100px;max-width:96vw;">
+    <div class="operator-profile-header">
+      <div id="excelPreviewTitle">📊 Просмотр файла</div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn-small" id="excelPreviewDownloadBtn" title="Скачать">⬇</button>
+        <button class="btn-small" onclick="closeExcelPreview()">✕</button>
+      </div>
+    </div>
+    <div class="operator-profile-body" id="excelPreviewBody" style="padding:0;">
+      <div id="excelPreviewSheets" style="padding:8px 14px;background:#e2e8f0;display:flex;gap:6px;overflow-x:auto;border-bottom:1px solid #cbd5e1;"></div>
+      <div id="excelPreviewTable" style="padding:14px;overflow:auto;max-height:70vh;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Tooltip матрицы -->
+<div id="ilu-tooltip"></div>
+
+<div class="container">
+
+  <!-- ВЕРХНИЙ УРОВЕНЬ: ГРУППЫ -->
+  <div class="groups-row">
+    <div class="groups" id="mainGroups">
+      <button class="group-btn active" data-group="work" onclick="openGroup(event, 'work')">
+        <span class="group-icon">🔧</span>
+        <span class="group-label">Работа</span>
+      </button>
+      <button class="group-btn" data-group="study" onclick="openGroup(event, 'study')">
+        <span class="group-icon">🎓</span>
+        <span class="group-label">Обучение</span>
+      </button>
+      <button class="group-btn" data-group="quality" onclick="openGroup(event, 'quality')">
+        <span class="group-icon">✅</span>
+        <span class="group-label">Качество</span>
+      </button>
+      <button class="group-btn" data-group="analytics" onclick="openGroup(event, 'analytics')">
+        <span class="group-icon">📈</span>
+        <span class="group-label">Аналитика</span>
+      </button>
+      <button class="group-btn" data-group="system" onclick="openGroup(event, 'system')">
+        <span class="group-icon">⚙️</span>
+        <span class="group-label">Система</span>
+      </button>
+    </div>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Тема">🌙</button>
+  </div>
+
+  <!-- ПОД-ВКЛАДКИ -->
+  <div class="subtabs-row">
+
+    <!-- Работа -->
+    <div class="subtabs active" data-group="work">
+      <button class="subtab active" data-tab="matrix" onclick="openTab(event, 'matrix')">📊 Матрица ILU</button>
+      <button class="subtab" data-tab="se8" onclick="openTab(event, 'se8')">🏭 Расстановка</button>
+      <button class="subtab" data-tab="shiftCalendar" onclick="openTab(event, 'shiftCalendar')">📅 Календарь смен</button>
+    </div>
+
+    <!-- Обучение -->
+    <div class="subtabs" data-group="study">
+      <button class="subtab" data-tab="training" onclick="openTab(event, 'training')">📋 Журнал обучений</button>
+      <button class="subtab" data-tab="planning" onclick="openTab(event, 'planning')">🎯 Развитие</button>
+      <button class="subtab" data-tab="rotation" onclick="openTab(event, 'rotation')">🔄 Ротация</button>
+    </div>
+
+    <!-- Качество -->
+    <div class="subtabs" data-group="quality">
+      <button class="subtab" data-tab="qualityBoardTab" onclick="openTab(event, 'qualityBoardTab')">📋 Доска качества</button>
+      <button class="subtab" data-tab="qualityProblemPostsTab" onclick="openTab(event, 'qualityProblemPostsTab')">📊 Дефекты с поста</button>
+      <button class="subtab" data-tab="qualityRisksTab" onclick="openTab(event, 'qualityRisksTab')">👥 Дефекты операторов</button>
+      <button class="subtab" data-tab="qualityDynamicsTab" onclick="openTab(event, 'qualityDynamicsTab')">📈 Динамика</button>
+      <button class="subtab" data-tab="qualityArchiveTab" onclick="openTab(event, 'qualityArchiveTab')">📦 Архив дефектов</button>
+    </div>
+
+    <!-- Аналитика -->
+    <div class="subtabs" data-group="analytics">
+      <button class="subtab" data-tab="stats" onclick="openTab(event, 'stats')">📊 Статистика</button>
+      <button class="subtab" data-tab="compare" onclick="openTab(event, 'compare')">⚖️ Смены</button>
+      <button class="subtab" data-tab="crossSection" onclick="openTab(event, 'crossSection')">🏭 Участки</button>
+    </div>
+
+    <!-- Система -->
+    <div class="subtabs" data-group="system">
+      <button class="subtab" data-tab="audit" onclick="openTab(event, 'audit')">📜 Аудит</button>
+      <button class="subtab" data-tab="placementLog" onclick="openTab(event, 'placementLog')">📋 Журнал</button>
+      <button class="subtab" data-tab="excelTables" onclick="openTab(event, 'excelTables')">📊 Excel</button>
+      <button class="subtab" data-tab="settings" onclick="openTab(event, 'settings')">⚙️ Настройки</button>
+    </div>
+
+  </div>
+
+  <!-- ==================== ГРУППА: РАБОТА ==================== -->
+
+  <!-- МАТРИЦА -->
+  <div id="matrix" class="tab-content active" data-group="work">
+
+    <div class="middle-row">
+      <div class="date-bar" id="dateBar"></div>
+      <div class="info-card">
+        <div class="info-row"><span class="info-label">УЧАСТОК:</span><span class="info-value" id="infoSection">—</span></div>
+        <div class="info-row"><span class="info-label">СМЕНА:</span><span class="info-value" id="infoShift">—</span></div>
+        <div class="info-row"><span class="info-label">ДАТА:</span><span class="info-value" id="infoDate">—</span></div>
+        <div class="info-row"><span class="info-label">ДЕПАРТАМЕНТ:</span><span class="info-value" id="infoDepartment">—</span></div>
+        <div class="info-row"><span class="info-label">ЦЕХ:</span><span class="info-value" id="infoWorkshop">—</span></div>
+        <div class="info-row"><span class="info-label">НЦ:</span><span class="info-value clickable" id="infoWorkshopChief" onclick="editChief('workshop')">—</span></div>
+        <div class="info-row"><span class="info-label">НУ:</span><span class="info-value clickable" id="infoSectionChief" onclick="editChief('section')">—</span></div>
+      </div>
+      <div class="stats-card">
+        <div class="info-row"><span class="info-label">ПОСТОВ ВСЕГО:</span><span class="info-value" id="statsTotalPosts">0</span></div>
+        <div class="info-row"><span class="info-label">ЗАПОЛНЕНО:</span><span class="info-value" id="statsFilledPosts">0</span></div>
+        <div class="info-row"><span class="info-label">С ОБУЧЕНИЕМ:</span><span class="info-value" id="statsTrainingPosts">0</span></div>
+      </div>
+      <div class="stats-card">
+        <div class="info-row"><span class="info-label">ОПЕРАТОРОВ:</span><span class="info-value" id="statsTotalOps">0</span></div>
+        <div class="info-row"><span class="info-label">ПРИСУТСТВУЕТ:</span><span class="info-value" id="statsPresent">0</span></div>
+        <div class="info-row"><span class="info-label">ОТПУСК:</span><span class="info-value" id="statsVacation">0</span></div>
+        <div class="info-row"><span class="info-label">БОЛЬНИЧНЫЙ:</span><span class="info-value" id="statsSick">0</span></div>
+        <div class="info-row"><span class="info-label">НЕ ЯВКА:</span><span class="info-value" id="statsAbsent">0</span></div>
+        <div class="info-row"><span class="info-label">УВОЛЬНЕНИЕ:</span><span class="info-value" id="statsFired">0</span></div>
+        <div class="info-row"><span class="info-label">В ДР. СЕКТОРЕ:</span><span class="info-value" id="statsOtherSector">0</span></div>
+      </div>
+      <div class="stats-card">
+        <div class="info-row"><span class="info-label">ПОЛИВАЛЕНТНОСТЬ</span></div>
+        <div class="info-row"><span class="info-label">Общая 2L:</span><span class="info-value" id="statsTotal2L">0%</span></div>
+        <div class="info-row"><span class="info-label">Общая 3L:</span><span class="info-value" id="statsTotal3L">0%</span></div>
+        <div class="info-row"><span class="info-label">По постам 2L:</span><span class="info-value" id="statsPosts2L">0%</span></div>
+        <div class="info-row"><span class="info-label">По постам 3L:</span><span class="info-value" id="statsPosts3L">0%</span></div>
+        <div class="info-row"><span class="info-label">По операторам 2L:</span><span class="info-value" id="statsOps2L">0%</span></div>
+        <div class="info-row"><span class="info-label">По операторам 3L:</span><span class="info-value" id="statsOps3L">0%</span></div>
+      </div>
+    </div>
+
+    <div class="add-buttons-top">
+      <button class="btn-small" onclick="openAddOperatorDialog()">+ Оператор</button>
+      <button class="btn-small" onclick="openAddPostDialog()">+ Пост</button>
+      <button class="btn-small" onclick="printMatrix()">🖨 Печать</button>
+    </div>
+
+    <div class="matrix-container">
+      <table id="iluTable"><thead></thead><tbody></tbody></table>
+      <div class="legend">
+        <span><span class="dot" style="background:#fef9c3;"></span> I</span>
+        <span><span class="dot" style="background:#fef9c3; color:#ef4444;"></span> Iкр</span>
+        <span><span class="dot" style="background:#fed7aa;"></span> L</span>
+        <span><span class="dot" style="background:#fed7aa; color:#ef4444;"></span> Lкр</span>
+        <span><span class="dot" style="background:#fecaca;"></span> U</span>
+        <span>○ Стоит &nbsp; △ Обучается</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SE-8 -->
+  <div id="se8" class="tab-content" data-group="work">
+    <div id="se8Container"></div>
+  </div>
+
+  <!-- КАЛЕНДАРЬ СМЕН -->
+  <div id="shiftCalendar" class="tab-content" data-group="work">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;">
+      <button class="btn-small" onclick="calPrevMonth()">←</button>
+      <span id="shiftCalendarTitle" style="font-size:14px;font-weight:700;color:var(--text);min-width:180px;text-align:center;"></span>
+      <button class="btn-small" onclick="calNextMonth()">→</button>
+      <button class="btn-small" onclick="calToday()">Сегодня</button>
+      <button class="btn-small" onclick="renderShiftCalendar()">Обновить</button>
+      <span style="font-size:12px;color:#94a3b8;margin-left:auto;">
+        <span style="display:inline-block;width:12px;height:12px;background:#dbeafe;border-left:3px solid #3b82f6;border-radius:2px;vertical-align:middle;"></span> A
+        <span style="display:inline-block;width:12px;height:12px;background:#fed7aa;border-left:3px solid #f59e0b;border-radius:2px;vertical-align:middle;margin-left:8px;"></span> B
+        <span style="display:inline-block;width:12px;height:12px;background:#e9d5ff;border-left:3px solid #8b5cf6;border-radius:2px;vertical-align:middle;margin-left:8px;"></span> C
+      </span>
+    </div>
+    <div class="matrix-container">
+      <div id="shiftCalendarContent"></div>
+    </div>
+  </div>
+
+  <!-- ==================== ГРУППА: ОБУЧЕНИЕ ==================== -->
+
+  <!-- ОБУЧЕНИЯ -->
+  <div id="training" class="tab-content" data-group="study">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;">
+      <button class="btn-small" style="background:#3b82f6;color:#fff;border-color:#3b82f6;"
+              onclick="openAddTrainingDialog()">+ Добавить запись</button>
+      <button class="btn-small view-btn active" id="viewMonthBtn" onclick="setTrainingView('month')">Месяц</button>
+      <button class="btn-small view-btn" id="viewWeekBtn" onclick="setTrainingView('week')">Неделя</button>
+      <span style="font-size:13px;color:#475569;margin-left:auto;">Календарь:</span>
+      <select id="trainingMonthSelect" onchange="renderTrainingCalendar()"></select>
+      <select id="trainingYearSelect" onchange="renderTrainingCalendar()"></select>
+      <button class="btn-small" onclick="trainingWeekPrev()" id="weekPrevBtn" style="display:none;">←</button>
+      <button class="btn-small" onclick="trainingWeekNext()" id="weekNextBtn" style="display:none;">→</button>
+      <button class="btn-small" onclick="renderTrainingCalendar()">Обновить</button>
+      <span style="border-left:1px solid var(--border);height:20px;margin:0 4px;"></span>
+      <button class="btn-small" onclick="printTrainingCalendar()">🖨 Печать</button>
+      <button class="btn-small" onclick="exportTrainingsToExcel()">📤 Excel</button>
+    </div>
+
+    <div id="trainingStats" style="margin-bottom:12px;"></div>
+
+    <div class="matrix-container" style="overflow-x:auto;margin-bottom:16px;">
+      <div class="training-calendar-title" id="trainingCalendarTitle">Календарь обучений</div>
+      <table id="trainingCalendarTable">
+        <thead></thead>
+        <tbody>
+          <tr><td style="text-align:center;color:#94a3b8;padding:40px;">Выберите месяц и год</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="matrix-container" style="overflow-x:auto;">
+      <div class="training-calendar-title">Список записей</div>
+      <table id="trainingTable">
+        <thead>
+          <tr>
+            <th style="width:30px;"></th>
+            <th>Год</th><th>Месяц</th><th>Пост</th><th>Оператор</th>
+            <th>Уровень</th><th>Статус</th><th>Форматор</th>
+            <th>Дата начала</th><th>Дата валидации</th><th>Срок</th><th>Комментарий</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="13" style="text-align:center;color:#94a3b8;padding:40px;">Нет записей</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- РАЗВИТИЕ -->
+  <div id="planning" class="tab-content" data-group="study">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;">
+      <button class="btn-small" style="background:#3b82f6;color:#fff;border-color:#3b82f6;"
+              onclick="generateDevelopmentPlan()">🎲 Сгенерировать план</button>
+      <button class="btn-small" onclick="saveDevelopmentPlan()">💾 Сохранить</button>
+      <button class="btn-small" onclick="clearDevelopmentPlan()">🗑 Очистить</button>
+      <span style="border-left:1px solid var(--border);height:20px;margin:0 4px;"></span>
+      <button class="btn-small" onclick="openDevelopmentSettings()">⚙️ Настройки</button>
+      <button class="btn-small" onclick="openDevelopmentDeficit()">📊 Дефицит постов</button>
+      <button class="btn-small" onclick="exportDevelopmentToTrainings()">📥 В план обучения</button>
+      <button class="btn-small" onclick="exportDevelopmentToExcel()">📤 Excel</button>
+    </div>
+    <div class="dev-layout">
+      <div class="dev-sidebar">
+        <div class="dev-sidebar-title">Операторы</div>
+        <div id="devOperatorList" class="dev-operator-list"></div>
+      </div>
+      <div class="matrix-container" style="overflow-x:auto;flex:1;">
+        <table id="devCalendarTable">
+          <thead></thead>
+          <tbody><tr><td style="text-align:center;color:#94a3b8;padding:40px;">Нажмите «Сгенерировать»</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- РОТАЦИЯ -->
+  <div id="rotation" class="tab-content" data-group="study">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;">
+      <span style="font-size:13px;color:#475569;">Режим:</span>
+      <select id="rotMode" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+        <option value="simple">Простой (быстрая ротация)</option>
+        <option value="full">Полный (все операторы по всем постам)</option>
+      </select>
+      <span style="font-size:13px;color:#475569;">Ротаций в день:</span>
+      <input type="number" id="rotationsPerDay" value="1" min="1" max="5" style="width:50px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;text-align:center;">
+      <label style="font-size:12px;color:#475569;display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="rotUseErgo" checked> Эргономика
+      </label>
+      <label style="font-size:12px;color:#475569;display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="rotUseDifficulty" checked> Сложность
+      </label>
+      <label style="font-size:12px;color:#475569;display:flex;align-items:center;gap:4px;" title="Только для полного режима">
+        <input type="checkbox" id="rotUseAttendance" checked> Учитывать явку
+      </label>
+      <label style="font-size:12px;color:#475569;display:flex;align-items:center;gap:4px;" title="Только для полного режима">
+        <input type="checkbox" id="rotUseCycle" checked> Сдвиг по циклу
+      </label>
+      <label style="font-size:12px;color:#475569;display:flex;align-items:center;gap:4px;" title="Только для полного режима">
+        <input type="checkbox" id="rotUseFairness" checked> Справедливая нагрузка
+      </label>
+      <button class="btn-small" onclick="generateRotationPlan()">🎲 Сгенерировать</button>
+      <button class="btn-small" onclick="saveRotationPlan()">💾 Сохранить</button>
+      <button class="btn-small" onclick="clearRotationPlan()">🗑 Очистить</button>
+    </div>
+
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:10px;background:var(--bg);border-radius:8px;">
+      <span style="font-size:13px;font-weight:700;color:var(--text);">🎯 Применить план:</span>
+      <button class="btn-small" onclick="openApplyRotationDialog()">📅 На один день</button>
+      <button class="btn-small" onclick="openApplyRotationRange()">📆 На диапазон</button>
+      <span style="border-left:1px solid var(--border);height:20px;margin:0 4px;"></span>
+      <span style="font-size:13px;font-weight:700;color:var(--text);">🤖 Авто-расстановка:</span>
+      <button class="btn-small" onclick="autoFillDay()">⚡ На текущий день</button>
+      <button class="btn-small" onclick="autoFillMonth()">📅 На весь месяц</button>
+    </div>
+
+    <div class="matrix-container" style="overflow-x:auto;">
+      <table id="rotCalendarTable">
+        <thead></thead>
+        <tbody><tr><td style="text-align:center;color:#94a3b8;padding:40px;">Нажмите «Сгенерировать»</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== ГРУППА: КАЧЕСТВО ==================== -->
+
+  <!-- ДОСКА КАЧЕСТВА -->
+  <div id="qualityBoardTab" class="tab-content" data-group="quality">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;">
+      <button class="btn-small" onclick="qualityAddAction()">➕ Действие</button>
+      <button class="btn-small" onclick="qualityExportExcel()">📤 Excel</button>
+      <button class="btn-small" onclick="qualityExportJSON()">💾 JSON</button>
+      <button class="btn-small" onclick="qualityPrint()">🖨 Печать</button>
+      <button class="btn-small" onclick="renderQualityBoard()">🔄 Обновить</button>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:auto;">
+        Посты добавляются в «Работа → Матрица ILU → ➕ Пост»
+      </span>
+    </div>
+    <div id="qualityBoardRoot"></div>
+  </div>
+
+  <!-- ДЕФЕКТЫ С ПОСТА -->
+  <div id="qualityProblemPostsTab" class="tab-content" data-group="quality">
+    <div class="add-buttons-top">
+      <button class="btn-small" onclick="renderQualityProblemPosts()">🔄 Обновить</button>
+    </div>
+    <div class="matrix-container" style="overflow-x:auto;">
+      <div id="qualityProblemPosts"></div>
+    </div>
+  </div>
+
+  <!-- ДЕФЕКТЫ ОПЕРАТОРОВ -->
+  <div id="qualityRisksTab" class="tab-content" data-group="quality">
+    <div class="add-buttons-top">
+      <button class="btn-small" onclick="renderQualityRisks()">🔄 Обновить</button>
+    </div>
+    <div class="matrix-container" style="overflow-x:auto;">
+      <div id="qualityRisks"></div>
+    </div>
+  </div>
+
+  <!-- ДИНАМИКА -->
+  <div id="qualityDynamicsTab" class="tab-content" data-group="quality">
+    <div class="add-buttons-top">
+      <button class="btn-small" onclick="renderQualityDynamics()">🔄 Обновить</button>
+    </div>
+    <div class="matrix-container" style="overflow-x:auto;">
+      <div id="qualityDynamics"></div>
+    </div>
+  </div>
+
+  <!-- АРХИВ ДЕФЕКТОВ -->
+  <div id="qualityArchiveTab" class="tab-content" data-group="quality">
+    <div class="add-buttons-top">
+      <button class="btn-small" onclick="renderQualityArchive()">🔄 Обновить</button>
+    </div>
+    <div class="matrix-container" style="overflow-x:auto;">
+      <div id="qualityArchiveRoot"></div>
+    </div>
+  </div>
+
+  <!-- ==================== ГРУППА: АНАЛИТИКА ==================== -->
+
+  <!-- СТАТИСТИКА -->
+  <div id="stats" class="tab-content" data-group="analytics">
+    <div class="stats-grid">
+
+      <div class="stats-panel stats-panel-wide">
+        <div class="stats-panel-title">📊 Общая сводка</div>
+        <div class="stats-panel-body" id="statsSummary"></div>
+      </div>
+
+      <div class="stats-panel stats-panel-wide">
+        <div class="stats-panel-title">📈 Поливалентность по неделям (3 месяца)</div>
+        <div class="stats-panel-body" id="statsPolyChart"></div>
+      </div>
+
+      <div class="stats-panel stats-panel-wide">
+        <div class="stats-panel-title">🎓 Обучения и валидации (за 3 месяца)</div>
+        <div class="stats-panel-body" id="statsTrainings"></div>
+      </div>
+
+      <div class="stats-panel">
+        <div class="stats-panel-title">🎯 Поливалентность по постам</div>
+        <div class="stats-panel-body" style="max-height:400px;overflow-y:auto;">
+          <table class="stats-table" id="statsTablePosts"></table>
+        </div>
+      </div>
+
+      <div class="stats-panel">
+        <div class="stats-panel-title">👥 Поливалентность по операторам</div>
+        <div class="stats-panel-body" style="max-height:400px;overflow-y:auto;">
+          <table class="stats-table" id="statsTableOps"></table>
+        </div>
+      </div>
+
+      <div class="stats-panel stats-panel-wide">
+        <div class="stats-panel-title">🔥 Тепловая карта постов (10 дней)</div>
+        <div class="stats-panel-body" style="overflow-x:auto;" id="statsHeatmap"></div>
+      </div>
+
+      <div class="stats-panel stats-panel-wide">
+        <div class="stats-panel-title">📅 Явка по дням (10 дней)</div>
+        <div class="stats-panel-body" style="overflow-x:auto;">
+          <table class="stats-table" id="statsTableAttendance"></table>
+        </div>
+      </div>
+
+      <div class="stats-panel stats-panel-wide">
+        <div class="stats-panel-title">🚦 Загрузка постов (текущая смена)</div>
+        <div class="stats-panel-body" id="statsLoadPosts"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- СМЕНЫ -->
+  <div id="compare" class="tab-content" data-group="analytics">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;">
+      <span style="font-size:13px;color:#475569;">Участок:</span>
+      <select id="compareSection" onchange="renderCompare()"></select>
+      <span style="font-size:13px;color:#475569;">Дата:</span>
+      <select id="compareDate" onchange="renderCompare()"></select>
+      <button class="btn-small" onclick="renderCompare()">Обновить</button>
+      <button class="btn-small" onclick="exportCompareToExcel()">📥 Экспорт в Excel</button>
+    </div>
+    <div id="compareContent"></div>
+  </div>
+
+  <!-- УЧАСТКИ -->
+  <div id="crossSection" class="tab-content" data-group="analytics">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;">
+      <span style="font-size:13px;color:#475569;">Департамент:</span>
+      <select id="crossDept" onchange="renderCrossSection()"></select>
+      <span style="font-size:13px;color:#475569;">Цех:</span>
+      <select id="crossWorkshop" onchange="renderCrossSection()"></select>
+      <span style="font-size:13px;color:#475569;">Смена:</span>
+      <select id="crossShift" onchange="renderCrossSection()">
+        <option value="A">A</option><option value="B">B</option><option value="C">C</option>
+      </select>
+      <button class="btn-small" onclick="renderCrossSection()">Обновить</button>
+      <button class="btn-small" onclick="exportCrossSection()">📥 Экспорт в Excel</button>
+    </div>
+    <div id="crossSectionContent"></div>
+  </div>
+
+  <!-- ==================== ГРУППА: СИСТЕМА ==================== -->
+
+  <!-- АУДИТ -->
+  <div id="audit" class="tab-content" data-group="system">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:13px;color:#475569;">Период:</span>
+      <select id="auditPeriod" onchange="renderAudit()">
+        <option value="today">Сегодня</option>
+        <option value="7">7 дней</option>
+        <option value="30" selected>30 дней</option>
+        <option value="all">Все</option>
+      </select>
+      <span style="font-size:13px;color:#475569;">Действие:</span>
+      <select id="auditActionFilter" onchange="renderAudit()">
+        <option value="">— все —</option>
+        <option value="assign">Назначения</option>
+        <option value="unassign">Снятия</option>
+        <option value="add_post">Посты (добавление)</option>
+        <option value="delete_post">Посты (удаление)</option>
+        <option value="add_operator">Операторы (добавление)</option>
+        <option value="delete_operator">Операторы (удаление)</option>
+        <option value="update_operator">Операторы (изменение)</option>
+        <option value="add_section">Участки (добавление)</option>
+        <option value="delete_section">Участки (удаление)</option>
+        <option value="add_training">Обучения</option>
+        <option value="delete_training">Обучения (удаление)</option>
+        <option value="auto_apply">Авто-применение</option>
+        <option value="auto_apply_setting">Настройки авто-применения</option>
+        <option value="apply_rotation">Применение ротации</option>
+        <option value="auto_fill">Авто-расстановка</option>
+        <option value="migrate_ilu_days">Перенос ILU на даты</option>
+        <option value="sync_matrix">Синхронизация матрицы</option>
+        <option value="sync_trainings">Синхронизация обучений</option>
+        <option value="add_quality_plan">План качества (добавление)</option>
+        <option value="delete_quality_plan">План качества (удаление)</option>
+        <option value="export_excel">Экспорт в Excel</option>
+      </select>
+      <span style="font-size:13px;color:#475569;">Поиск:</span>
+      <input type="text" id="auditSearch" placeholder="ФИО, пост…" oninput="renderAudit()"
+             style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;min-width:180px;">
+      <button class="btn-small" onclick="resetAuditFilters()">Сбросить</button>
+      <button class="btn-small" onclick="renderAudit()">Обновить</button>
+      <button class="btn-small" onclick="exportAuditToExcel()">📥 Экспорт</button>
+      <span style="font-size:12px;color:#94a3b8;margin-left:auto;" id="auditCountLabel"></span>
+    </div>
+    <div class="matrix-container" style="overflow-x:auto;">
+      <table id="auditTable">
+        <thead>
+          <tr>
+            <th style="width:80px;">Дата</th>
+            <th style="width:80px;">Время</th>
+            <th style="width:120px;">Пользователь</th>
+            <th style="width:160px;">Действие</th>
+            <th style="width:220px;">Объект</th>
+            <th>Детали</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:40px;">Записей нет</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ЖУРНАЛ -->
+  <div id="placementLog" class="tab-content" data-group="system">
+    <div class="add-buttons-top" style="gap:8px;align-items:center;flex-wrap:wrap;">
+      <span style="font-size:13px;color:#475569;">Дата:</span>
+      <input type="date" id="placementFilter"
+             onchange="setPlacementFilter(this.value ? this.value.split('-').reverse().join('.') : '')"
+             style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;">
+      <span style="font-size:13px;color:#475569;">Оператор:</span>
+      <select id="placementFilterOp" onchange="setPlacementFilterOperator(this.value)"
+              style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;min-width:150px;"></select>
+      <span style="font-size:13px;color:#475569;">Пост:</span>
+      <select id="placementFilterPost" onchange="setPlacementFilterPost(this.value)"
+              style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;min-width:150px;"></select>
+      <button class="btn-small" onclick="resetPlacementFilters()">Сбросить</button>
+      <button class="btn-small" onclick="renderPlacementLog()">Обновить</button>
+      <button class="btn-small" onclick="exportPlacementLogToExcel()">📥 Экспорт</button>
+    </div>
+    <div class="matrix-container" style="overflow-x:auto;">
+      <table id="placementLogTable">
+        <thead>
+          <tr><th>Дата / Время</th><th>Оператор</th><th>Пост</th><th>Действие</th></tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:40px;">Журнал пуст</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- EXCEL-ТАБЛИЦЫ -->
+  <div id="excelTables" class="tab-content" data-group="system">
+    <div class="add-buttons-top" style="gap:8px;flex-wrap:wrap;">
+      <button class="btn-small" onclick="openExcelImportDialog()">📥 Загрузить Excel</button>
+      <button class="btn-small" onclick="createEmptyExcelTable()">➕ Новая таблица</button>
+      <button class="btn-small" onclick="exportAllCustomTables()">📤 Экспорт всех в .xlsx</button>
+      <button class="btn-small" onclick="renderExcelTables()">🔄 Обновить</button>
+      <span style="font-size:12px;color:#94a3b8;margin-left:auto;">
+        Таблицы хранятся в системе и синхронизируются с бэкапом JSON
+      </span>
+    </div>
+    <div id="excelTablesContent"></div>
+  </div>
+
+  <!-- НАСТРОЙКИ -->
+  <div id="settings" class="tab-content" data-group="system">
+    <div class="matrix-container" style="padding:20px;">
+
+      <h3 style="margin-bottom:12px;">Пользователь</h3>
+      <div class="settings-filters">
+        <div class="filter-row">
+          <label>ФИО</label>
+          <input type="text" id="currentUserName"
+                 placeholder="Введите ваше ФИО"
+                 onchange="setCurrentUser(this.value)"
+                 style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);">
+        </div>
+      </div>
+
+      <h3 style="margin:24px 0 12px;">💾 Хранилище данных</h3>
+      <div class="storage-panel" id="storagePanel" style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;max-width:640px;display:flex;flex-direction:column;gap:10px;">
+        <div id="storageStatus" style="font-size:13px;color:var(--text);"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-small" style="background:#3b82f6;color:#fff;border-color:#3b82f6;"
+                  onclick="onConnectFolder()" id="storageConnectBtn">
+            📁 Подключить папку
+          </button>
+          <button class="btn-small" onclick="onConfirmFolder()" id="storageConfirmBtn" style="display:none;">
+            🔓 Подтвердить доступ
+          </button>
+          <button class="btn-small" onclick="onReloadFromDisk()" id="storageReloadBtn" style="display:none;">
+            🔄 Загрузить из файла
+          </button>
+          <button class="btn-small danger" onclick="onDisconnectFolder()" id="storageDisconnectBtn" style="display:none;">
+            🔌 Отключить папку
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.4;">
+          Файлы на диске позволяют хранить сколько угодно данных (500 ГБ+),
+          синхронизировать через облако (Яндекс.Диск, OneDrive, Dropbox)
+          и легко делать бэкапы простым копированием папки.<br>
+          Требуется Chrome / Edge / Яндекс.Браузер и запуск через <code>http://localhost</code>.
+        </div>
+      </div>
+
+      <h3 style="margin:24px 0 12px;">🕓 Авто-применение плана ротации</h3>
+      <div class="auto-apply-panel" id="autoApplyPanel">
+        <div class="auto-apply-row">
+          <label class="auto-apply-toggle">
+            <input type="checkbox" id="autoApplyEnabled" onchange="onAutoApplyToggle(this.checked)">
+            <span>Включить авто-применение плана ротации</span>
+          </label>
+        </div>
+        <div class="auto-apply-row">
+          <label>Время срабатывания</label>
+          <input type="time" id="autoApplyTime" value="04:00"
+                 onchange="onAutoApplyTimeChange(this.value)"
+                 style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--bg);color:var(--text);">
+        </div>
+        <div class="auto-apply-row">
+          <label>Режим применения</label>
+          <select id="autoApplyMode" onchange="onAutoApplyModeChange(this.value)"
+                  style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--bg);color:var(--text);">
+            <option value="fill_empty">Заполнить только пустые</option>
+            <option value="replace_all">Заменить всё</option>
+            <option value="merge">Добавить к существующим</option>
+          </select>
+        </div>
+        <div class="auto-apply-row">
+          <label>Смены</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;">
+              <input type="checkbox" id="autoApplyShiftA" checked onchange="onAutoApplyShiftToggle('A', this.checked)"> Смена A
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;">
+              <input type="checkbox" id="autoApplyShiftB" checked onchange="onAutoApplyShiftToggle('B', this.checked)"> Смена B
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;">
+              <input type="checkbox" id="autoApplyShiftC" checked onchange="onAutoApplyShiftToggle('C', this.checked)"> Смена C
+            </label>
+          </div>
+        </div>
+        <div class="auto-apply-status">
+          <div><b>Следующее срабатывание:</b> <span id="autoApplyNext">—</span></div>
+          <div><b>Последний запуск:</b> <span id="autoApplyLast">—</span></div>
+        </div>
+        <div class="auto-apply-actions">
+          <button class="btn-small" onclick="requestNotificationPermission()">🔔 Разрешить уведомления</button>
+          <button class="btn-small" onclick="runAutoApply('manual')">▶️ Запустить сейчас</button>
+          <button class="btn-small" onclick="clearAutoApplyLog()">🗑 Очистить лог</button>
+        </div>
+        <div class="auto-apply-log">
+          <div class="auto-apply-log-title">Последние срабатывания</div>
+          <div id="autoApplyLogList">
+            <div class="auto-apply-log-empty">Записей нет</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 style="margin:24px 0 12px;">Нормы (для статистики и уведомлений)</h3>
+      <div class="settings-filters" id="normSettingsPanel"></div>
+
+      <h3 style="margin:24px 0 12px;">Фильтры</h3>
+      <div class="settings-filters">
+        <div class="filter-row">
+          <label>Департамент</label>
+          <div class="select-with-buttons">
+            <select id="filterDepartment" onchange="onDepartmentChange(this.value)"></select>
+            <button class="btn-icon" onclick="openAddDepartmentDialog()" title="Добавить">+</button>
+            <button class="btn-icon" onclick="openRenameDepartmentDialog()" title="Переименовать">✏️</button>
+            <button class="btn-icon danger" onclick="openDeleteDepartmentDialog()" title="Удалить">🗑️</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <label>Цех</label>
+          <div class="select-with-buttons">
+            <select id="filterWorkshop" onchange="onWorkshopChange(this.value)"></select>
+            <button class="btn-icon" onclick="openAddWorkshopDialog()" title="Добавить">+</button>
+            <button class="btn-icon" onclick="openRenameWorkshopDialog()" title="Переименовать">✏️</button>
+            <button class="btn-icon danger" onclick="openDeleteWorkshopDialog()" title="Удалить">🗑️</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <label>Участок</label>
+          <div class="select-with-buttons">
+            <select id="sectionSelect" onchange="onSectionChange(this.value)"></select>
+            <button class="btn-icon" onclick="openAddSectionDialog()" title="Добавить">+</button>
+            <button class="btn-icon" onclick="openRenameSectionDialog()" title="Переименовать">✏️</button>
+            <button class="btn-icon danger" onclick="openDeleteSectionDialog()" title="Удалить">🗑️</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <label>Смена</label>
+          <select id="shiftSelect" onchange="onShiftChange(this.value)">
+            <option value="A">A</option><option value="B">B</option><option value="C">C</option>
+          </select>
+        </div>
+        <div class="filter-row">
+          <label>Дата</label>
+          <select id="dateSelect" onchange="onDateChange(this.value)"></select>
+        </div>
+        <div class="filter-actions">
+          <button class="btn-small" onclick="saveAllChanges()">💾 Сохранить</button>
+          <button class="btn-small" onclick="resetFilters()">↺ Сбросить фильтры</button>
+        </div>
+      </div>
+
+      <h3 style="margin:24px 0 12px;">Управление данными</h3>
+      <div class="add-buttons-top">
+        <button class="btn-small" onclick="exportSystemToFile()">📥 Экспорт в Excel</button>
+        <button class="btn-small" onclick="document.getElementById('importFile').click()">📤 Импорт из Excel</button>
+        <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;" onchange="importSystemFromFile(event)">
+        <button class="btn-small" onclick="exportSystemToJSON()">💾 Бэкап (.json)</button>
+        <button class="btn-small" onclick="document.getElementById('importJsonFile').click()">📂 Загрузить бэкап</button>
+        <input type="file" id="importJsonFile" accept=".json" style="display:none;" onchange="importSystemFromJSON(event)">
+      </div>
+
+      <h3 style="margin:24px 0 12px;">🔄 Синхронизация</h3>
+      <div id="syncPanel" style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;max-width:900px;"></div>
+      <div class="add-buttons-top" style="margin-top:10px;">
+        <button class="btn-small" style="background:#3b82f6;color:#fff;border-color:#3b82f6;"
+                onclick="onRecheckSyncClick()">🔍 Проверить расхождения</button>
+        <button class="btn-small" style="background:#f59e0b;color:#fff;border-color:#f59e0b;"
+                onclick="onSyncMatrixClick()">⬆️ Матрица из обучений</button>
+        <button class="btn-small" style="background:#16a34a;color:#fff;border-color:#16a34a;"
+                onclick="onSyncTrainingsClick()">📝 Обучения из матрицы</button>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">
+          «Матрица из обучений» — применит завершённые и активные обучения (не понижает уровни).<br>
+          «Обучения из матрицы» — создаст записи для уровней L/U, которых нет в журнале.
+        </span>
+      </div>
+
+      <h3 style="margin:24px 0 12px;">🔧 Миграция данных</h3>
+      <div class="add-buttons-top">
+        <button class="btn-small" style="background:#3b82f6;color:#fff;border-color:#3b82f6;"
+                onclick="openMigrateDialog()" title="Открыть окно переноса">
+          📅 Перенести ILU на даты
+        </button>
+        <button class="btn-small" onclick="runMigrateHistoricalDays()" title="Быстрый автоперенос (без окна)">
+          ⚡ Быстрый автоперенос
+        </button>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">
+          Выберите диапазон, шаблон и что копировать
+        </span>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- SheetJS (чтение/запись .xlsx) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<!-- x-spreadsheet (редактор таблиц) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/x-data-spreadsheet@1.1.9/dist/xspreadsheet.css">
+<script src="https://cdn.jsdelivr.net/npm/x-data-spreadsheet@1.1.9/dist/xspreadsheet.js"></script>
+
+<script src="storage.js"></script>
+<script src="data.js"></script>
+<script src="sync.js"></script>
+<script src="state.js"></script>
+<script src="utils.js"></script>
+<script src="matrix.js"></script>
+<script src="placement.js"></script>
+<script src="training.js"></script>
+<script src="rotation.js"></script>
+<script src="development.js"></script>
+<script src="se8.js"></script>
+<script src="stats.js"></script>
+<script src="quality.js"></script>
+<script src="quality-problems.js"></script>
+<script src="quality-operators.js"></script>
+<script src="quality-dynamics.js"></script>
+<script src="quality-archive.js"></script>
+<script src="notifications.js"></script>
+<script src="compare.js"></script>
+<script src="shift-calendar.js"></script>
+<script src="cross-section.js"></script>
+<script src="audit.js"></script>
+<script src="operator-profile.js"></script>
+<script src="global-search.js"></script>
+<script src="norm-settings.js"></script>
+<script src="shortcuts.js"></script>
+<script src="auto-apply.js"></script>
+<script src="excel-tables.js"></script>
+<script src="migration.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
